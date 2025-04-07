@@ -61,22 +61,38 @@ export default function ArticleList({ category }: ArticleListProps) {
       for (let i = 0; i < Math.min(articlesPerPage, response.articles.length); i++) {
         const article = response.articles[i];
         
-        // Generate summary and sentiment analysis in parallel
-        const [summary, sentimentResult] = await Promise.all([
-          generateArticleSummary(article.title, article.description, article.content || ''),
-          analyzeArticleSentiment(article.title, article.description, article.content || '')
-        ]);
-        
-        processedArticles.push({
-          id: `article-${pageNum}-${i}-${Date.now()}`,
-          title: article.title,
-          source: article.source.name,
-          publishedAt: article.publishedAt,
-          url: article.url,
-          summary,
-          sentiment: sentimentResult.sentiment,
-          sentimentExplanation: sentimentResult.explanation
-        });
+        try {
+          // Generate summary and sentiment analysis in parallel
+          const [summary, sentimentResult] = await Promise.all([
+            generateArticleSummary(article.title, article.description, article.content || ''),
+            analyzeArticleSentiment(article.title, article.description, article.content || '')
+          ]);
+          
+          processedArticles.push({
+            id: `article-${pageNum}-${i}-${Date.now()}`,
+            title: article.title,
+            source: article.source.name,
+            publishedAt: article.publishedAt,
+            url: article.url,
+            summary,
+            sentiment: sentimentResult.sentiment,
+            sentimentExplanation: sentimentResult.explanation
+          });
+        } catch (aiError) {
+          console.error('Error processing article with AI:', aiError);
+          
+          // Add the article with a default summary if AI processing fails
+          processedArticles.push({
+            id: `article-${pageNum}-${i}-${Date.now()}`,
+            title: article.title,
+            source: article.source.name,
+            publishedAt: article.publishedAt,
+            url: article.url,
+            summary: `This is a summary of the article from ${article.source.name}. The original content could not be processed.`,
+            sentiment: 'neutral',
+            sentimentExplanation: 'Sentiment analysis could not be completed.'
+          });
+        }
       }
       
       setArticles(prev => isInitialLoad ? processedArticles : [...prev, ...processedArticles]);
@@ -86,7 +102,7 @@ export default function ArticleList({ category }: ArticleListProps) {
       setHasMore(pageNum === 1 || response.articles.length >= articlesPerPage);
     } catch (err) {
       console.error('Error fetching articles:', err);
-      setError('Failed to load articles. Please try again later.');
+      setError('Failed to load articles. Showing mock data as fallback.');
       
       // Fallback to mock data for demo purposes
       const mockArticles: Article[] = Array.from({ length: articlesPerPage }, (_, i) => {

@@ -43,10 +43,10 @@ export const generateArticleSummary = async (
   description: string,
   content: string
 ): Promise<string> => {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
   
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY not found in environment variables');
+    throw new Error('NEXT_PUBLIC_OPENROUTER_API_KEY not found in environment variables');
   }
   
   const messages: OpenRouterMessage[] = [
@@ -67,8 +67,8 @@ ${content}`
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://localhost:3000', // Required by OpenRouter
-      'X-Title': 'NewsHub' // Optional but recommended by OpenRouter
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app',
+      'X-Title': 'NewsHub'
     },
     body: JSON.stringify({
       model: 'anthropic/claude-3-haiku',
@@ -97,10 +97,10 @@ export const analyzeArticleSentiment = async (
   description: string,
   content: string
 ): Promise<SentimentResult> => {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY;
   
   if (!apiKey) {
-    throw new Error('OPENROUTER_API_KEY not found in environment variables');
+    throw new Error('NEXT_PUBLIC_OPENROUTER_API_KEY not found in environment variables');
   }
   
   const messages: OpenRouterMessage[] = [
@@ -125,8 +125,8 @@ ${content}`
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://localhost:3000', // Required by OpenRouter
-      'X-Title': 'NewsHub' // Optional but recommended by OpenRouter
+      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app',
+      'X-Title': 'NewsHub'
     },
     body: JSON.stringify({
       model: 'anthropic/claude-3-haiku',

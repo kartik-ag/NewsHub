@@ -38,11 +38,11 @@ export const fetchTopHeadlines = async (
 ): Promise<NewsAPIResponse> => {
   // In a production environment, this should be called from a server-side function
   // to avoid exposing your API key in client-side code
-  const apiKey = process.env.NEWS_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_NEWS_API_KEY;
   
   // If no API key is found, return mock data for development
   if (!apiKey) {
-    console.warn('NEWS_API_KEY not found in environment variables, using mock data');
+    console.warn('NEXT_PUBLIC_NEWS_API_KEY not found in environment variables, using mock data');
     return getMockNewsData(category, page, pageSize);
   }
   
@@ -114,10 +114,10 @@ export const searchNews = async (
   to?: string,
   pageSize: number = 10
 ): Promise<NewsAPIResponse> => {
-  const apiKey = process.env.NEWS_API_KEY;
+  const apiKey = process.env.NEXT_PUBLIC_NEWS_API_KEY;
   
   if (!apiKey) {
-    throw new Error('NEWS_API_KEY not found in environment variables');
+    throw new Error('NEXT_PUBLIC_NEWS_API_KEY not found in environment variables');
   }
   
   let url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&pageSize=${pageSize}&apiKey=${apiKey}`;
