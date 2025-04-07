@@ -1,0 +1,245 @@
+{
+  "name": "NewsHub News Fetching and Processing",
+  "nodes": [
+    {
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        250,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minuteInterval": 4
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Fetch News API",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "url": "=https://newsapi.org/v2/top-headlines?country=us&apiKey={{$node[\"Set News API Key\"].json[\"apiKey\"]}}",
+        "options": {
+          "allowUnauthorizedCerts": true
+        },
+        "authentication": "none",
+        "method": "GET"
+      }
+    },
+    {
+      "name": "Set News API Key",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        250,
+        450
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "apiKey",
+              "value": "43025992c0344eca91f15a4f638c93c3"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Process Articles",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        650,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {
+          "manual": true
+        },
+        "sourceData": "={{$json[\"articles\"]}}"
+      }
+    },
+    {
+      "name": "OpenRouter API - Summarize",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "Authentication": "Bearer {{$node[\"Set OpenRouter Key\"].json[\"apiKey\"]}}",
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "bodyContent": "={ \"model\": \"anthropic/claude-3-haiku\", \"messages\": [{ \"role\": \"user\", \"content\": \"Please provide a concise summary of the following news article in about 3-4 sentences. Focus on the key information, facts, and context:\\n\\n\" + $json[\"title\"] + \"\\n\\n\" + $json[\"description\"] + \"\\n\\n\" + $json[\"content\"] }] }"
+      }
+    },
+    {
+      "name": "Set OpenRouter Key",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        650,
+        450
+      ],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "apiKey",
+              "value": "YOUR_OPENROUTER_API_KEY"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "OpenRouter API - Sentiment",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "Authentication": "Bearer {{$node[\"Set OpenRouter Key\"].json[\"apiKey\"]}}",
+          "Content-Type": "application/json"
+        },
+        "method": "POST",
+        "bodyContent": "={ \"model\": \"anthropic/claude-3-haiku\", \"messages\": [{ \"role\": \"user\", \"content\": \"Analyze the sentiment of the following news article as 'positive', 'negative', or 'neutral'. Then provide a brief explanation for your sentiment classification in about 2 sentences:\\n\\n\" + $json[\"title\"] + \"\\n\\n\" + $json[\"description\"] + \"\\n\\n\" + $json[\"content\"] }], \"response_format\": { \"type\": \"json_object\" } }"
+      }
+    },
+    {
+      "name": "Format Article Data",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        1250,
+        300
+      ],
+      "parameters": {
+        "functionCode": "// Extract summary and sentiment from API responses\nconst articleData = items[0].json;\nconst summaryResponse = $node[\"OpenRouter API - Summarize\"].json;\nconst sentimentResponse = $node[\"OpenRouter API - Sentiment\"].json;\n\n// Extract summary text from response\nconst summary = summaryResponse.choices[0].message.content.trim();\n\n// Parse JSON from sentiment response\nconst sentimentData = JSON.parse(sentimentResponse.choices[0].message.content);\nconst sentiment = sentimentData.sentiment;\nconst sentimentExplanation = sentimentData.explanation;\n\n// Format for database\nreturn [\n  {\n    json: {\n      external_id: articleData.source.id + '-' + Date.now(),\n      title: articleData.title,\n      content: articleData.content,\n      summary: summary,\n      sentiment: sentiment.toLowerCase(),\n      sentiment_explanation: sentimentExplanation,\n      source: articleData.source.name,\n      author: articleData.author,\n      published_at: articleData.publishedAt,\n      url: articleData.url,\n      image_url: articleData.urlToImage,\n      category: articleData.source.category || 'general',\n      topics: [],\n      keywords: []\n    }\n  }\n];"
+      }
+    },
+    {
+      "name": "Store in Nhost",
+      "type": "n8n-nodes-base.graphql",
+      "position": [
+        1450,
+        300
+      ],
+      "parameters": {
+        "endpoint": "=https://kjylbhmoyyflvttydrpo.hasura.ap-south-1.nhost.run/v1/graphql",
+        "requestFormat": "json",
+        "query": "mutation insertArticle($article: news_articles_insert_input!) {\n  insert_news_articles_one(object: $article) {\n    id\n    title\n  }\n}",
+        "variables": "={\n  \"article\": $json\n}",
+        "authentication": "headerAuth",
+        "headerAuth": {
+          "x-hasura-admin-secret": "BJI6t0UpEpgkkUtB6v585KqJQbYwaCeHfUfHnAWvktg81iikFWvFqOd7of6X7KI4"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch News API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set News API Key": {
+      "main": [
+        [
+          {
+            "node": "Fetch News API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch News API": {
+      "main": [
+        [
+          {
+            "node": "Process Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Articles": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter API - Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set OpenRouter Key": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter API - Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter API - Summarize": {
+      "main": [
+        [
+          {
+            "node": "OpenRouter API - Sentiment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter API - Sentiment": {
+      "main": [
+        [
+          {
+            "node": "Format Article Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Article Data": {
+      "main": [
+        [
+          {
+            "node": "Store in Nhost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
