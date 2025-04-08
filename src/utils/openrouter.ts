@@ -32,6 +32,20 @@ type SentimentResult = {
 };
 
 /**
+ * Gets the appropriate URL for OpenRouter API calls
+ * Uses our proxy endpoint in production and direct calls in development
+ */
+const getOpenRouterUrl = () => {
+  // In development, we can call OpenRouter directly
+  if (process.env.NODE_ENV === 'development') {
+    return 'https://openrouter.ai/api/v1/chat/completions';
+  }
+  
+  // In production, use our proxy endpoint
+  return '/api/openrouter';
+};
+
+/**
  * Generates a summary of an article using OpenRouter's AI models
  * @param title - Article title
  * @param description - Article description
@@ -62,18 +76,26 @@ ${content}`
     }
   ];
   
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const requestBody = {
+    model: 'anthropic/claude-3-haiku',
+    messages
+  };
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  // Only add Authorization header when calling OpenRouter directly (in development)
+  if (process.env.NODE_ENV === 'development') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app';
+    headers['X-Title'] = 'NewsHub';
+  }
+  
+  const response = await fetch(getOpenRouterUrl(), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app',
-      'X-Title': 'NewsHub'
-    },
-    body: JSON.stringify({
-      model: 'anthropic/claude-3-haiku',
-      messages
-    })
+    headers,
+    body: JSON.stringify(requestBody)
   });
   
   if (!response.ok) {
@@ -120,19 +142,27 @@ ${content}`
     }
   ];
   
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const requestBody = {
+    model: 'anthropic/claude-3-haiku',
+    messages,
+    response_format: { type: 'json_object' }
+  };
+  
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json'
+  };
+  
+  // Only add Authorization header when calling OpenRouter directly (in development)
+  if (process.env.NODE_ENV === 'development') {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+    headers['HTTP-Referer'] = typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app';
+    headers['X-Title'] = 'NewsHub';
+  }
+  
+  const response = await fetch(getOpenRouterUrl(), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-      'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://newshub-subspace.vercel.app',
-      'X-Title': 'NewsHub'
-    },
-    body: JSON.stringify({
-      model: 'anthropic/claude-3-haiku',
-      messages,
-      response_format: { type: 'json_object' }
-    })
+    headers,
+    body: JSON.stringify(requestBody)
   });
   
   if (!response.ok) {
@@ -143,29 +173,65 @@ ${content}`
   const result: OpenRouterResponse = await response.json();
   
   try {
-    // Try to parse the JSON
-    const sentimentData = JSON.parse(result.choices[0].message.content);
-    return {
-      sentiment: sentimentData.sentiment.toLowerCase(),
-      explanation: sentimentData.explanation
-    };
-  } catch (error) {
-    console.error('Failed to parse sentiment analysis JSON:', error);
-    console.log('Raw response:', result.choices[0].message.content);
-    
-    // Fallback: extract sentiment from text if JSON parsing fails
+    // Get the content from the response
     const content = result.choices[0].message.content;
-    let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
     
-    if (content.toLowerCase().includes('positive')) {
-      sentiment = 'positive';
-    } else if (content.toLowerCase().includes('negative')) {
-      sentiment = 'negative';
+    // For response_format: { type: 'json_object' }, the content should already be JSON
+    // No need to parse it again
+    let sentimentData;
+    
+    if (typeof content === 'string') {
+      // It's still a string, try to parse it
+      try {
+        sentimentData = JSON.parse(content);
+      } catch (parseError) {
+        console.error('Failed to parse sentiment JSON string:', parseError);
+        // Extract sentiment information manually
+        return extractSentimentManually(content);
+      }
+    } else {
+      // It's already an object
+      sentimentData = content;
     }
     
-    return {
-      sentiment,
-      explanation: content.slice(0, 200) // Just take the first 200 chars of the explanation
-    };
+    // Validate the sentiment data
+    if (sentimentData && sentimentData.sentiment && sentimentData.explanation) {
+      return {
+        sentiment: sentimentData.sentiment.toLowerCase(),
+        explanation: sentimentData.explanation
+      };
+    } else {
+      console.error('Invalid sentiment data structure:', sentimentData);
+      return extractSentimentManually(typeof content === 'string' ? content : JSON.stringify(content));
+    }
+  } catch (error) {
+    console.error('Error processing sentiment analysis result:', error);
+    console.log('Raw response:', result.choices[0].message.content);
+    
+    // Extract sentiment manually as fallback
+    return extractSentimentManually(
+      typeof result.choices[0].message.content === 'string' 
+        ? result.choices[0].message.content 
+        : JSON.stringify(result.choices[0].message.content)
+    );
   }
-}; 
+};
+
+/**
+ * Extracts sentiment information manually from text when JSON parsing fails
+ */
+function extractSentimentManually(content: string): SentimentResult {
+  let sentiment: 'positive' | 'negative' | 'neutral' = 'neutral';
+  
+  const lowerContent = content.toLowerCase();
+  if (lowerContent.includes('positive')) {
+    sentiment = 'positive';
+  } else if (lowerContent.includes('negative')) {
+    sentiment = 'negative';
+  }
+  
+  return {
+    sentiment,
+    explanation: content.slice(0, 200) // Just take the first 200 chars of the explanation
+  };
+} 

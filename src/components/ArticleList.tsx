@@ -51,7 +51,7 @@ export default function ArticleList({ category }: ArticleListProps) {
       const response = await fetchTopHeadlines(categoryParam, pageNum, articlesPerPage);
       
       if (response.status !== 'ok') {
-        throw new Error('Failed to fetch articles');
+        throw new Error(response.error || 'Failed to fetch articles');
       }
       
       // Step 2: Process articles with OpenRouter AI
@@ -62,11 +62,15 @@ export default function ArticleList({ category }: ArticleListProps) {
         const article = response.articles[i];
         
         try {
+          console.log(`Processing article ${i+1}: "${article.title.substring(0, 30)}..."`);
+          
           // Generate summary and sentiment analysis in parallel
           const [summary, sentimentResult] = await Promise.all([
             generateArticleSummary(article.title, article.description, article.content || ''),
             analyzeArticleSentiment(article.title, article.description, article.content || '')
           ]);
+          
+          console.log(`Successfully processed article ${i+1}`);
           
           processedArticles.push({
             id: `article-${pageNum}-${i}-${Date.now()}`,
@@ -100,9 +104,22 @@ export default function ArticleList({ category }: ArticleListProps) {
       // Check if there are more articles to load
       // Always show "Show More" for at least the first page, or if the API returns enough articles
       setHasMore(pageNum === 1 || response.articles.length >= articlesPerPage);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching articles:', err);
-      setError('Failed to load articles. Showing mock data as fallback.');
+      const errorMessage = err.message || 'Failed to load articles';
+      
+      // Show a more user-friendly error message when we detect specific errors
+      let userFriendlyError = `${errorMessage}. Showing mock data as fallback.`;
+      
+      if (errorMessage.includes('CORS') || errorMessage.includes('corsNotAllowed')) {
+        userFriendlyError = "API access restricted. The API doesn't allow browser requests from hosted sites. Using mock data instead.";
+      } else if (errorMessage.includes('fetch') || errorMessage.includes('network')) {
+        userFriendlyError = "Network error when contacting news service. Using mock data instead.";
+      } else if (errorMessage.includes('JSON')) {
+        userFriendlyError = "Error processing response data. Using mock data instead.";
+      }
+      
+      setError(userFriendlyError);
       
       // Fallback to mock data for demo purposes
       const mockArticles: Article[] = Array.from({ length: articlesPerPage }, (_, i) => {
